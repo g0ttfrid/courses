@@ -9,7 +9,11 @@ using DInvoke.DynamicInvoke;
 using static DInvoke.Data.Win32.Kernel32;
 using static DInvoke.Data.Win32.WinNT;
 
-// D/Invoke Manual Mapping + PPID Spoof & BlockDLLs + Patch ETW
+// D/Invoke Manual Mapping
+// Native API
+// PPID Spoof
+// Process Mitigation Policy (BlockDLLs)
+// Patch ETW
 
 namespace ManualMap
 {
